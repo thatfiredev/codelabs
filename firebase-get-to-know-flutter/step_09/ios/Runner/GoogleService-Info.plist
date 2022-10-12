@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>975204386921-4dt3jh62j0li3n7lvkhus16udnls8dhl.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.975204386921-4dt3jh62j0li3n7lvkhus16udnls8dhl</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>975204386921-r050due7sq2oohf5v7nsjo26g5mifnl8.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyB-jri45I_edVaK1PRUdEx5dfpI-nU7DaI</string>
+	<key>GCM_SENDER_ID</key>
+	<string>975204386921</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.gtkFlutter</string>
+	<key>PROJECT_ID</key>
+	<string>nuxtsirr</string>
+	<key>STORAGE_BUCKET</key>
+	<string>nuxtsirr.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:975204386921:ios:5992373a8a1049958ebaf8</string>
+	<key>DATABASE_URL</key>
+	<string>https://nuxtsirr-default-rtdb.europe-west1.firebasedatabase.app</string>
+</dict>
+</plist>

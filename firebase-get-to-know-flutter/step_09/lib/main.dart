@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'
     hide EmailAuthProvider, PhoneAuthProvider;
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:firebase_ui_auth/firebase_ui_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -27,6 +29,13 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mfaAction =
+        AuthStateChangeAction<MFARequired>(((context, state) async {
+      final nav = Navigator.of(context);
+      await startMFAVerification(context: context, resolver: state.resolver);
+
+      unawaited(nav.pushReplacementNamed('/profile'));
+    }));
     return MaterialApp(
       initialRoute: '/home',
       routes: {
@@ -50,6 +59,7 @@ class App extends StatelessWidget {
                   }
                   if (state is UserCreated) {
                     user.updateDisplayName(user.email!.split('@')[0]);
+                    user.sendEmailVerification();
                   }
                   if (!user.emailVerified) {
                     user.sendEmailVerification();
@@ -61,6 +71,7 @@ class App extends StatelessWidget {
                   Navigator.of(context).popUntil(ModalRoute.withName('/home'));
                 }
               })),
+              mfaAction,
             ],
           );
         }),
@@ -74,15 +85,29 @@ class App extends StatelessWidget {
           );
         }),
         '/profile': ((context) {
-          return ProfileScreen(
-            providers: const [],
-            actions: [
-              SignedOutAction(
-                ((context) {
-                  Navigator.of(context).popUntil(ModalRoute.withName('/home'));
-                }),
-              ),
-            ],
+          return Consumer<ApplicationState>(
+            builder: (context, value, child) => ProfileScreen(
+              key: ValueKey(value),
+              providers: const [],
+              showMFATile: value.emailVerified,
+              actions: [
+                SignedOutAction(
+                  ((context) {
+                    Navigator.of(context)
+                        .popUntil(ModalRoute.withName('/home'));
+                  }),
+                ),
+              ],
+              children: [
+                Visibility(
+                    visible: !value.emailVerified,
+                    child: OutlinedButton(
+                        onPressed: () {
+                          value.refreshLoggedInUser();
+                        },
+                        child: const Text('Recheck email verification')))
+              ],
+            ),
           );
         })
       },
@@ -114,14 +139,19 @@ class HomePage extends StatelessWidget {
         children: <Widget>[
           Image.asset('assets/codelab.png'),
           const SizedBox(height: 8),
-          const IconAndDetail(Icons.calendar_today, 'October 30'),
+          Consumer<ApplicationState>(
+            builder: ((context, value, child) =>
+                IconAndDetail(Icons.calendar_today, value.event_date)),
+          ),
           const IconAndDetail(Icons.location_city, 'San Francisco'),
           Consumer<ApplicationState>(
             builder: (context, appState, _) => AuthFunc(
-                loggedIn: appState.loggedIn,
-                signOut: () {
-                  FirebaseAuth.instance.signOut();
-                }),
+              loggedIn: appState.loggedIn,
+              signOut: () {
+                FirebaseAuth.instance.signOut();
+              },
+              enable_free_swag: appState.enable_free_swag,
+            ),
           ),
           const Divider(
             height: 8,
@@ -131,8 +161,8 @@ class HomePage extends StatelessWidget {
             color: Colors.grey,
           ),
           const Header("What we'll be doing"),
-          const Paragraph(
-            'Join us for a day full of Firebase Workshops and Pizza!',
+          Consumer<ApplicationState>(
+            builder: (context, value, child) => Paragraph(value.call_to_action),
           ),
           Consumer<ApplicationState>(
             builder: (context, appState, _) => Column(
@@ -175,12 +205,30 @@ class ApplicationState extends ChangeNotifier {
   bool _loggedIn = false;
   bool get loggedIn => _loggedIn;
 
+  bool _emailVerified = false;
+  bool get emailVerified => _emailVerified;
+
   StreamSubscription<QuerySnapshot>? _guestBookSubscription;
   List<GuestBookMessage> _guestBookMessages = [];
   List<GuestBookMessage> get guestBookMessages => _guestBookMessages;
 
   int _attendees = 0;
   int get attendees => _attendees;
+
+  static Map<String, dynamic> defaultFlagValues = <String, dynamic>{
+    'event_date': 'October 18, 2022',
+    'enable_free_swag': false,
+    'call_to_action': 'Join us for a day full of Firebase Workshops and Pizza!',
+  };
+
+  bool _enable_free_swag = defaultFlagValues['enable_free_swag'] as bool;
+  bool get enable_free_swag => _enable_free_swag;
+
+  String _event_date = defaultFlagValues['event_date'] as String;
+  String get event_date => _event_date;
+
+  String _call_to_action = defaultFlagValues['call_to_action'] as String;
+  String get call_to_action => _call_to_action;
 
   Attending _attending = Attending.unknown;
   StreamSubscription<DocumentSnapshot>? _attendingSubscription;
@@ -200,6 +248,28 @@ class ApplicationState extends ChangeNotifier {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
 
+    FlutterError.onError = (details) =>
+        {FirebaseCrashlytics.instance.recordFlutterFatalError(details)};
+
+    var remoteConfig = FirebaseRemoteConfig.instance;
+
+    await remoteConfig.setConfigSettings(
+      RemoteConfigSettings(
+        fetchTimeout: const Duration(minutes: 1),
+        minimumFetchInterval: const Duration(hours: 0),
+      ),
+    );
+
+    await remoteConfig.setDefaults(defaultFlagValues);
+
+    await remoteConfig.fetchAndActivate();
+
+    _enable_free_swag = remoteConfig.getBool('enable_free_swag');
+    _event_date = remoteConfig.getString('event_date');
+    _call_to_action = remoteConfig.getString('call_to_action');
+
+    notifyListeners();
+
     FirebaseUIAuth.configureProviders([
       EmailAuthProvider(),
     ]);
@@ -216,6 +286,7 @@ class ApplicationState extends ChangeNotifier {
     FirebaseAuth.instance.userChanges().listen((user) {
       if (user != null) {
         _loggedIn = true;
+        _emailVerified = user.emailVerified;
         _guestBookSubscription = FirebaseFirestore.instance
             .collection('guestbook')
             .orderBy('timestamp', descending: true)
@@ -250,12 +321,21 @@ class ApplicationState extends ChangeNotifier {
         });
       } else {
         _loggedIn = false;
+        _emailVerified = false;
         _guestBookMessages = [];
         _guestBookSubscription?.cancel();
         _attendingSubscription?.cancel();
       }
       notifyListeners();
     });
+  }
+
+  Future<void> refreshLoggedInUser() async {
+    if (!loggedIn) {
+      return;
+    }
+
+    await FirebaseAuth.instance.currentUser!.reload();
   }
 
   Future<DocumentReference> addMessageToGuestBook(String message) {
@@ -270,6 +350,7 @@ class ApplicationState extends ChangeNotifier {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'name': FirebaseAuth.instance.currentUser!.displayName,
       'userId': FirebaseAuth.instance.currentUser!.uid,
+      'expireAt': DateTime.now().add(const Duration(minutes: 1))
     });
   }
 }
